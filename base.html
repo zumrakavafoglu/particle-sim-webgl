@@ -1,0 +1,326 @@
+<!doctype html>
+<html>
+	<head>
+		<title>3D Mesh</title>
+		<style>
+			body{ background-color: grey; }
+			canvas{ background-color: white; }
+		</style>
+		<script src="raf_polyfill.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.4.0/gl-matrix-min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/3.16.4/math.js"></script>
+		<script src="webgl-obj-loader.js"></script>
+
+		<script id="color-vs" type="x-shader/x-vertex">
+			attribute vec3 aVertexPosition;
+			attribute vec3 aVertexColor;
+
+			uniform mat4 uMVMatrix;
+			uniform mat4 uPMatrix;
+  
+			varying highp vec4 vColor;	
+
+			void main(void) {
+				gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+				gl_PointSize = 5.0;
+				vColor = vec4(aVertexColor, 1.0);
+			}
+		</script>
+		
+		<script id="color-fs" type="x-shader/x-fragment">
+			varying highp vec4 vColor;
+			
+			void main(void) {
+               gl_FragColor = vColor;
+			}
+		</script>
+
+		<script id="textured-vs" type="x-shader/x-vertex">
+			attribute vec3 aVertexPosition;
+			attribute vec2 aTextureCoord;
+
+			uniform mat4 uMVMatrix;
+			uniform mat4 uPMatrix;
+  
+			varying vec2 vTextureCoord;
+			
+			void main(void) {
+				gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+
+				//Pass the textureCoord to the fragment shader 
+				vTextureCoord = aTextureCoord;
+			}
+		</script>
+		
+		<script id="textured-fs" type="x-shader/x-fragment">
+
+			precision mediump float;
+			
+			//Passed in from the vertex shader
+			varying vec2 vTextureCoord;
+			
+			//The texture
+			uniform sampler2D u_texture;
+			
+			void main(void) {
+               gl_FragColor = texture2D(u_texture, vTextureCoord);
+			}
+		</script>
+
+		<script id="directionalLight-vs" type="x-shader/x-vertex">
+			attribute vec3 aVertexPosition;
+			attribute vec3 aVertexNormal;	
+			
+			varying highp vec4 vColor;	
+
+			uniform mat4 uMVMatrix;
+			uniform mat4 uPMatrix;
+
+			uniform vec3 uInverseLightDirection;
+			uniform float uShininess;
+			uniform vec4 uDiffuseProduct;
+			uniform vec4 uSpecularProduct;
+			uniform vec4 uAmbientProduct;
+
+			void main(void){
+				vec3 posInCameraSpace = (uMVMatrix * vec4(aVertexPosition, 1.0)).xyz;
+				vec3 l = normalize(uInverseLightDirection);
+				vec3 n = normalize((uMVMatrix * vec4(aVertexNormal, 0.0)).xyz);
+
+				vec3 v = -posInCameraSpace;
+				float nl = dot(n,l);
+				vec3 r = 2.0*nl*n-l;
+
+				vec4 diffuse = max(nl,0.0)*uDiffuseProduct;
+				vec4 specular = pow(max(dot(r,v),0.0),uShininess)*uSpecularProduct;
+				vec4 ambient = uAmbientProduct;
+
+				vColor = diffuse + specular + ambient;
+				vColor.a = 1.0;
+
+				gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+			}
+		</script>
+
+		<script id="directionalLight-fs" type="x-shader/x-fragment">
+			varying highp vec4 vColor;
+
+			void main(void) {
+				gl_FragColor = vColor;
+			}
+
+		</script>
+
+		<script id="directionalLight2-vs" type="x-shader/x-vertex">
+			attribute vec3 aVertexPosition;
+			attribute vec3 aVertexNormal;	
+			attribute vec2 aTextureCoord;
+			
+			uniform mat4 uMVMatrix;
+			uniform mat4 uPMatrix;
+
+			varying vec3 n, v;
+
+			varying vec2 vTextureCoord;
+			
+			
+			void main(void){
+				vec3 posInCameraSpace = (uMVMatrix * vec4(aVertexPosition, 1.0)).xyz;
+
+				n = (uMVMatrix * vec4(aVertexNormal, 0.0)).xyz;
+
+				v = -posInCameraSpace;
+
+				vTextureCoord = aTextureCoord;				
+				
+				gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+				
+			}
+
+			
+		</script>
+
+		<script id="directionalLight2-fs" type="x-shader/x-fragment">
+		precision mediump float;
+		
+		uniform  float uShininess;
+		uniform  vec4 uDiffuseProduct;
+		uniform  vec4 uSpecularProduct;
+		uniform  vec4 uAmbientProduct;
+
+		uniform vec3 uInverseLightDirection;		
+
+		//Varying variables provide an interface between Vertex and Fragment Shader. 
+		//Vertex Shaders compute values per vertex and fragment shaders compute values per fragment.
+		// If you define a varying variable in a vertex shader, 
+		//its value will be interpolated (perspective-correct) over the primitive being rendered 
+		//and you can access the interpolated value in the fragment shader.
+		
+		varying vec3 n, v;
+		
+		varying vec2 vTextureCoord;
+		
+		//The texture
+		uniform sampler2D u_texture;
+
+		void main(void){
+
+			//Note that we could normalize in the vertex shader but because
+			// it's a varying it will be linearly interpolated between our positions 
+			//and so would not be a complete unit vector
+
+			 vec3 l = normalize(uInverseLightDirection);
+			 vec3 n2 = normalize(n);
+			 vec3 v2 = normalize(v);
+
+			 float nl = dot(n2,l);
+			 vec3 r = 2.0*nl*n2-l;
+
+			 vec4 diffuse = max(nl,0.0)*uDiffuseProduct;
+			 vec4 specular = pow(max(dot(r,v2),0.0),uShininess)*uSpecularProduct;
+			 vec4 ambient = uAmbientProduct;
+
+			 vec4 fColor = diffuse + specular + ambient;
+			fColor.a = 1.0;
+
+			gl_FragColor = fColor * texture2D(u_texture, vTextureCoord);
+
+		}
+
+		</script>
+
+		<script id="pointLight-vs" type="x-shader/x-vertex">
+			attribute vec3 aVertexPosition;
+			attribute vec3 aVertexNormal;	
+			
+			varying highp vec4 vColor;	
+
+			uniform mat4 uMVMatrix;
+			uniform mat4 uPMatrix;
+
+			uniform vec3 uLightPosition;
+			uniform float uShininess;
+			uniform vec4 uDiffuseProduct;
+			uniform vec4 uSpecularProduct;
+			uniform vec4 uAmbientProduct;
+
+			uniform float k1;
+			uniform float k2;
+			uniform float k3;
+
+			void main(void){
+				vec3 posInCameraSpace = (uMVMatrix * vec4(aVertexPosition, 1.0)).xyz;
+				vec3 lightPosInCameraSpace = uLightPosition;
+				
+				vec3 l = posInCameraSpace - lightPosInCameraSpace;
+				float dist = length(l);
+				l = normalize(l);
+				vec3 n = normalize((uMVMatrix * vec4(aVertexNormal, 0.0)).xyz);
+
+				vec3 v = -posInCameraSpace;
+				float nl = dot(n,l);
+				vec3 r = 2.0*nl*n-l;
+
+				float attenuation = 1.0 / 1.0+(dist*dist);
+
+				vec4 diffuse = max(nl,0.0)*uDiffuseProduct;
+				vec4 specular = pow(max(dot(r,v),0.0),uShininess)*uSpecularProduct;
+				vec4 ambient = uAmbientProduct;
+
+				vColor = attenuation * (diffuse + specular) + ambient;
+				vColor.a = 1.0;
+
+				gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+			}
+		</script>
+
+		<script id="pointLight-fs" type="x-shader/x-fragment">
+			varying highp vec4 vColor;
+
+			void main(void) {
+				gl_FragColor = vColor;
+			}
+
+		</script>
+
+		<script id="particle-vs" type="x-shader/x-vertex">
+			attribute vec3 aVertexPosition;
+			attribute vec3 aVertexColor;
+			attribute float aPointSize;
+
+			uniform mat4 uMVMatrix;
+			uniform mat4 uPMatrix;
+  
+			varying highp vec4 vColor;	
+
+			void main(void) {
+				gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+				gl_PointSize = aPointSize;
+				vColor = vec4(aVertexColor, 1.0);
+			}
+		</script>
+		
+		<script id="particle-fs" type="x-shader/x-fragment">
+			varying highp vec4 vColor;
+			
+			void main(void) {
+               gl_FragColor = vColor;
+			}
+		</script>
+
+
+		<script src="Camera.js"></script>
+		<script src="Texture.js"></script>
+		<script src="Program.js"></script>
+		<script src="Light.js"></script>
+		<script src="Material.js"></script>
+		<script src="Mesh.js"></script>
+		<script src="SceneObject.js"></script>
+		<script src="UI.js"></script>
+		<script src="Input.js"></script>
+		<script src="Main.js"></script>		
+		<script src="ParticleSystem.js"></script>		
+		<script src="Particle.js"></script>			
+		<script src="Utils.js"></script>		
+
+		<script>
+			var gl = null,
+				canvas = null;
+			
+			function initWebGL(){
+				canvas = document.getElementById("my-canvas");  
+				try{
+					gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");					
+				}catch(e){
+				}
+								
+				if(gl){
+					initInput();
+					window.init();
+
+					//just call once to start updating
+					loop();
+					
+				}else{	
+					alert(  "Error: Your browser does not appear to support WebGL.");
+				}
+			}
+
+			function loop(){
+				window.update();
+
+				//setTimeout(loop, 0);
+				//request a new update causes loop
+				requestAnimationFrame(loop, canvas);
+			}			
+		</script>
+	</head>
+	<body onload="initWebGL()">
+		<canvas id="my-canvas" width="800" height="600">
+			Your browser does not support the HTML5 canvas element.
+		</canvas>
+		<div id="ui">
+
+		</div>
+	</body>
+</html>
