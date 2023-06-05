@@ -1,5 +1,5 @@
 # particle-sim-webgl
-Simple particle simulation with WebGL
+Simple particle simulation with WebGL for beginners.
 
 Run base.html on a web browser to see the simulation.
 
